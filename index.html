@@ -48,6 +48,7 @@ body {
 .controls {
   display: flex;
   justify-content: center;
+  gap: 10px;
   margin-bottom: 20px;
 }
 
@@ -62,6 +63,8 @@ body {
   text-transform: uppercase;
   letter-spacing: 2px;
   transition: all 0.2s;
+  flex: 1;
+  max-width: 200px;
 }
 
 .btn:hover {
@@ -359,6 +362,7 @@ function toggleLoop() {
     btn.classList.remove("active");
   }
 }
+
 </script>
 </head>
 <body>
@@ -371,6 +375,7 @@ function toggleLoop() {
   
   <div class="controls">
     <button class="btn" id="btnToggle" onclick="toggleLoop()">▶ START</button>
+    <button class="btn" id="btnNoSleep">NoSleep Off</button>
   </div>
   
   <div class="data-grid">
@@ -403,8 +408,8 @@ function toggleLoop() {
   <div class="tips">
     <div class="tips-title">Tips</div>
     <ul>
-      <li>Disable screen auto-lock or keep your screen awake.</li>
       <li>Enable Precise Location.</li>
+      <li>NoSleep will stop your screen from auto-locking.</li>
     </ul>
   </div>
   
@@ -412,5 +417,25 @@ function toggleLoop() {
     <a href="https://ko-fi.com/ryanpohlner" target="_blank">☕ Support on Ko-fi</a>
   </div>
 </div>
+<script src="NoSleep.js"></script>
+<script>
+var noSleep = new NoSleep();
+var wakeLockEnabled = false;
+var toggleEl = document.getElementById("btnNoSleep");
+
+toggleEl.addEventListener('click', function() {
+  if (!wakeLockEnabled) {
+    noSleep.enable();
+    wakeLockEnabled = true;
+    toggleEl.innerHTML = "NoSleep On";
+    toggleEl.classList.add("active");
+  } else {
+    noSleep.disable();
+    wakeLockEnabled = false;
+    toggleEl.innerHTML = "NoSleep Off";
+    toggleEl.classList.remove("active");
+  }
+}, false);
+</script>
 </body>
 </html>

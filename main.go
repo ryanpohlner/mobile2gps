@@ -25,12 +25,13 @@ import (
 )
 
 const (
-	httpsPort  = 1993
-	gpsdPort   = 2947
-	indexFile  = "index.html"
-	certFile   = "cert.pem"
-	keyFile    = "key.pem"
-	writePadMs = 33
+	httpsPort   = 1993
+	gpsdPort    = 2947
+	indexFile   = "index.html"
+	noSleepFile = "NoSleep.js"
+	certFile    = "cert.pem"
+	keyFile     = "key.pem"
+	writePadMs  = 33
 )
 
 var ptmx *os.File // master side of pty
@@ -180,11 +181,15 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 }
 
 func serveIndex(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" && r.URL.Path != "/index.html" {
+	switch r.URL.Path {
+	case "/", "/index.html":
+		http.ServeFile(w, r, indexFile)
+	case "/NoSleep.js":
+		w.Header().Set("Content-Type", "application/javascript")
+		http.ServeFile(w, r, noSleepFile)
+	default:
 		http.NotFound(w, r)
-		return
 	}
-	http.ServeFile(w, r, indexFile)
 }
 
 func handleGPSData(w http.ResponseWriter, r *http.Request) {
