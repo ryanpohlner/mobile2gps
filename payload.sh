@@ -2,7 +2,7 @@
 # Title: mobile2gps
 # Description: Use your mobile phone as the Pager's GPS.
 # Author: Ryan Pohlner
-# Version: 1.0
+# Version: 1.1
 # Category: General
 
 # Make sure the Go binary is executable
