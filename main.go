@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"log"
 	"math/big"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -81,6 +82,7 @@ func main() {
 		log.Println("Shutting down...")
 		gpsd.Process.Kill()
 		ptmx.Close()
+		slave.Close()
 		os.Exit(0)
 	}()
 
@@ -134,6 +136,7 @@ func loadOrGenerateCert() (tls.Certificate, error) {
 		KeyUsage:     x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		DNSNames:     []string{hostname, "localhost"},
+		IPAddresses:  []net.IP{net.ParseIP("172.16.52.1"), net.ParseIP("127.0.0.1")},
 	}
 
 	certDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &key.PublicKey, key)
@@ -211,6 +214,9 @@ func handleGPSData(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Received %d GPS update(s)\n", len(lats))
 
 	for i := range lats {
+		if i >= len(lons) {
+			continue
+		}
 		lat, err := strconv.ParseFloat(lats[i], 64)
 		if err != nil {
 			continue

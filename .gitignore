@@ -4,3 +4,6 @@ key.pem
 
 # Debug log
 debug.log
+
+# Compiled binary
+mobile2gps
