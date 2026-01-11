@@ -1,3 +1,6 @@
 # Server certificates
 cert.pem
 key.pem
+
+# Debug log
+debug.log

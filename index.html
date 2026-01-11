@@ -86,7 +86,7 @@ body {
 
 .data-row {
   display: grid;
-  grid-template-columns: 70px 1fr;
+  grid-template-columns: 110px 1fr;
   background: #000;
 }
 
@@ -266,12 +266,14 @@ function foundLocation(position) {
   document.getElementById("idLon").innerHTML = position.coords.longitude.toFixed(6);
   
   var accEl = document.getElementById("idAcc");
-  accEl.innerHTML = position.coords.accuracy.toFixed(1) + "m";
+  var accText = position.coords.accuracy.toFixed(1) + "m";
   if (position.coords.accuracy > 100) {
+    accText += " (INVALID)";
     accEl.classList.add("invalid");
   } else {
     accEl.classList.remove("invalid");
   }
+  accEl.innerHTML = accText;
   
   if (timeLast != position.timestamp) {
     timeLast = position.timestamp;
@@ -380,15 +382,15 @@ function toggleLoop() {
   
   <div class="data-grid">
     <div class="data-row">
-      <div class="data-label">LAT</div>
+      <div class="data-label">LATITUDE</div>
       <div class="data-value" id="idLat">—</div>
     </div>
     <div class="data-row">
-      <div class="data-label">LON</div>
+      <div class="data-label">LONGITUDE</div>
       <div class="data-value" id="idLon">—</div>
     </div>
     <div class="data-row">
-      <div class="data-label">ACC</div>
+      <div class="data-label">ACCURACY</div>
       <div class="data-value" id="idAcc">—</div>
     </div>
     <div class="data-row">
