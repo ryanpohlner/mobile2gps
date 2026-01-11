@@ -15,6 +15,8 @@ mobile2gps creates a bridge between your mobile phone's location data and the Pa
 
 ## Building
 
+Pre-compiled releases are available [here](https://github.com/ryanpohlner/mobile2gps/releases/).
+
 It is not recommended to build directly on the Pager.
 
 This folder contains build scripts that automatically configure cross-compilation for the Pager's architecture (MIPS 24KEc soft-float).
