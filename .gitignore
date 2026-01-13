@@ -7,3 +7,8 @@ debug.log
 
 # Compiled binary
 mobile2gps
+*.exe
+
+# IDE and editor directories
+.claude/
+.vscode/

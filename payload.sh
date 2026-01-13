@@ -1,8 +1,8 @@
 #!/bin/bash
 # Title: mobile2gps
 # Description: Use your mobile phone as the Pager's GPS.
-# Author: Ryan Pohlner
-# Version: 1.3
+# Author: Ryan Pohlner (@Spectracide on Discord)
+# Version: 1.4
 # Category: General
 
 # Check if the mobile2gps binary exists
@@ -20,8 +20,8 @@ while true; do
   LOG ""
   LOG green "Press [▲] to START the mobile2gps server"
   LOG red "Press [▼] to STOP the mobile2gps server"
-  LOG cyan "Press [◀] for help"
-  LOG yellow "Press [▶] to test"
+  LOG cyan "Press [◀] for HELP"
+  LOG yellow "Press [▶] to TEST"
   LOG ""
 
   choice=$(WAIT_FOR_INPUT)
@@ -62,11 +62,16 @@ while true; do
     LOG "Press any button to return to the menu."
     __button=$(WAIT_FOR_INPUT)
   elif [ "$choice" = "RIGHT" ]; then
-    coords=$(gpspipe --json -x 3 | tail -n 1 | jq -r '"\(.lat), \(.lon)"')
-    if echo "$coords" | grep -q "null"; then
-      LOG red "mobile2gps not running or position is inaccurate!"
+    if pgrep mobile2gps > /dev/null; then
+      LOG green "mobile2gps is running."
+      coords=$(gpspipe --json -x 3 | tail -n 1 | jq -r '"\(.lat), \(.lon)"')
+      if echo "$coords" | grep -q "null"; then
+        LOG red "Unable to obtain coordinates from gpspipe. Client is not connected or position is not accurate."
+      else
+        LOG green "Your coordinates are:\n$coords"
+      fi
     else
-      LOG green "Your coordinates are:\n$coords"
+      LOG red "mobile2gps is not running."
     fi
   else
     LOG "Exiting."

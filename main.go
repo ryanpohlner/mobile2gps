@@ -3,6 +3,8 @@
 package main
 
 import (
+	"bytes"
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -19,6 +21,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"strconv"
+	"sync"
 	"syscall"
 	"time"
 
@@ -26,16 +29,23 @@ import (
 )
 
 const (
-	httpsPort   = 1993
-	gpsdPort    = 2947
-	indexFile   = "index.html"
-	noSleepFile = "NoSleep.js"
-	certFile    = "cert.pem"
-	keyFile     = "key.pem"
-	writePadMs  = 33
+	httpsPort  = 1993
+	gpsdPort   = 2947
+	indexFile  = "index.html"
+	certFile   = "cert.pem"
+	keyFile    = "key.pem"
+	writePadMs = 33
 )
 
-var ptmx *os.File // master side of pty
+var (
+	ptmx       *os.File     // master side of pty
+	server     *http.Server // HTTP server for graceful shutdown
+	bufferPool = sync.Pool{
+		New: func() any {
+			return new(bytes.Buffer)
+		},
+	}
+)
 
 func main() {
 	// Load or generate TLS certificate
@@ -59,6 +69,9 @@ func main() {
 
 	log.Println("Created fake GPS device:", slaveName)
 
+	// Kill any existing gpsd to free the port
+	exec.Command("killall", "gpsd").Run()
+
 	// Start gpsd
 	gpsd := exec.Command("gpsd", "-N", "-G",
 		"-S", strconv.Itoa(gpsdPort),
@@ -72,7 +85,17 @@ func main() {
 	log.Println("Started gpsd on port", gpsdPort)
 
 	// Keep slave open - closing it can cause permission issues
-	defer slave.Close()
+	// Don't defer close here - handle in shutdown
+
+	// HTTPS server
+	http.HandleFunc("/", handleRequest)
+
+	server = &http.Server{
+		Addr: fmt.Sprintf(":%d", httpsPort),
+		TLSConfig: &tls.Config{
+			Certificates: []tls.Certificate{tlsCert},
+		},
+	}
 
 	// Handle shutdown
 	sigChan := make(chan os.Signal, 1)
@@ -80,24 +103,36 @@ func main() {
 	go func() {
 		<-sigChan
 		log.Println("Shutting down...")
-		gpsd.Process.Kill()
+
+		// Gracefully shutdown HTTP server with 5 second timeout
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := server.Shutdown(ctx); err != nil {
+			log.Printf("HTTP server shutdown error: %v\n", err)
+		}
+
+		// Cleanup gpsd - graceful shutdown then force kill
+		if gpsd.Process != nil {
+			gpsd.Process.Signal(syscall.SIGTERM)
+			done := make(chan error, 1)
+			go func() { done <- gpsd.Wait() }()
+			select {
+			case <-done:
+				// gpsd exited cleanly
+			case <-time.After(2 * time.Second):
+				gpsd.Process.Kill()
+				<-done
+			}
+		}
+
+		// Close PTY
 		ptmx.Close()
 		slave.Close()
 		os.Exit(0)
 	}()
 
-	// HTTPS server
-	http.HandleFunc("/", handleRequest)
-
-	server := &http.Server{
-		Addr: fmt.Sprintf(":%d", httpsPort),
-		TLSConfig: &tls.Config{
-			Certificates: []tls.Certificate{tlsCert},
-		},
-	}
-
 	log.Printf("HTTPS server listening on port %d\n", httpsPort)
-	if err := server.ListenAndServeTLS("", ""); err != nil {
+	if err := server.ListenAndServeTLS("", ""); err != http.ErrServerClosed {
 		log.Fatal("HTTPS server error:", err)
 	}
 }
@@ -126,7 +161,10 @@ func loadOrGenerateCert() (tls.Certificate, error) {
 		hostname = "mobile2gps"
 	}
 
-	serialNumber, _ := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
+	serialNumber, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
+	if err != nil {
+		return tls.Certificate{}, fmt.Errorf("failed to generate serial number: %w", err)
+	}
 
 	template := x509.Certificate{
 		SerialNumber: serialNumber,
@@ -149,8 +187,13 @@ func loadOrGenerateCert() (tls.Certificate, error) {
 	if err != nil {
 		return tls.Certificate{}, err
 	}
-	pem.Encode(certOut, &pem.Block{Type: "CERTIFICATE", Bytes: certDER})
-	certOut.Close()
+	if err := pem.Encode(certOut, &pem.Block{Type: "CERTIFICATE", Bytes: certDER}); err != nil {
+		certOut.Close()
+		return tls.Certificate{}, fmt.Errorf("failed to encode certificate: %w", err)
+	}
+	if err := certOut.Close(); err != nil {
+		return tls.Certificate{}, fmt.Errorf("failed to close certificate file: %w", err)
+	}
 
 	// Save private key
 	keyDER, err := x509.MarshalECPrivateKey(key)
@@ -161,8 +204,13 @@ func loadOrGenerateCert() (tls.Certificate, error) {
 	if err != nil {
 		return tls.Certificate{}, err
 	}
-	pem.Encode(keyOut, &pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
-	keyOut.Close()
+	if err := pem.Encode(keyOut, &pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER}); err != nil {
+		keyOut.Close()
+		return tls.Certificate{}, fmt.Errorf("failed to encode private key: %w", err)
+	}
+	if err := keyOut.Close(); err != nil {
+		return tls.Certificate{}, fmt.Errorf("failed to close key file: %w", err)
+	}
 
 	log.Printf("Saved certificate to %s and %s\n", certFile, keyFile)
 
@@ -184,18 +232,22 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 }
 
 func serveIndex(w http.ResponseWriter, r *http.Request) {
-	switch r.URL.Path {
-	case "/", "/index.html":
+	// Only serve index.html for root or /index.html
+	if r.URL.Path == "/" || r.URL.Path == "/index.html" {
 		http.ServeFile(w, r, indexFile)
-	case "/NoSleep.js":
-		w.Header().Set("Content-Type", "application/javascript")
-		http.ServeFile(w, r, noSleepFile)
-	default:
+	} else {
 		http.NotFound(w, r)
 	}
 }
 
 func handleGPSData(w http.ResponseWriter, r *http.Request) {
+	// Ensure request body is closed and form data is cleaned up
+	defer r.Body.Close()
+	defer func() {
+		r.Form = nil
+		r.PostForm = nil
+	}()
+
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Bad request", http.StatusBadRequest)
 		return
@@ -212,6 +264,13 @@ func handleGPSData(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Printf("Received %d GPS update(s)\n", len(lats))
+
+	// Get a buffer from the pool
+	buf := bufferPool.Get().(*bytes.Buffer)
+	defer func() {
+		buf.Reset()
+		bufferPool.Put(buf)
+	}()
 
 	for i := range lats {
 		if i >= len(lons) {
@@ -248,22 +307,42 @@ func handleGPSData(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		nmea := buildGPRMC(lat, lon, ts, valid, faa)
-		log.Println(nmea)
+		// Build NMEA sentence directly into buffer
+		buf.Reset()
+		buildGPRMC(buf, lat, lon, ts, valid, faa)
 
-		// Feed to fake GPS
-		ptmx.Write([]byte(nmea + "\r\n"))
+		// Log NMEA sentence for debugging (trim \r\n for cleaner output)
+		nmea := buf.String()
+		log.Print(nmea[:len(nmea)-2])
+
+		// Feed to fake GPS (buffer contents already have \r\n)
+		if _, err := ptmx.Write(buf.Bytes()); err != nil {
+			log.Printf("Error writing to PTY: %v\n", err)
+			// Continue processing other updates even if one fails
+		}
 		time.Sleep(writePadMs * time.Millisecond)
 	}
 
 	w.WriteHeader(http.StatusOK)
 }
 
-// buildGPRMC creates an NMEA GPRMC sentence from coordinates
-func buildGPRMC(lat, lon float64, ts time.Time, valid, faa string) string {
+// buildGPRMC creates an NMEA GPRMC sentence from coordinates and writes it to the buffer
+func buildGPRMC(buf *bytes.Buffer, lat, lon float64, ts time.Time, valid, faa string) {
+	buf.WriteByte('$')
+
+	// Start building the sentence body (for checksum calculation)
+	bodyStart := buf.Len()
+
+	buf.WriteString("GPRMC,")
+
 	// Convert time to NMEA format: HHMMSS.ss
-	nmeaTime := ts.Format("150405") + fmt.Sprintf(".%02d", ts.Nanosecond()/10000000)
-	nmeaDate := ts.Format("020106")
+	buf.WriteString(ts.Format("150405"))
+	buf.WriteByte('.')
+	fmt.Fprintf(buf, "%02d", ts.Nanosecond()/10000000)
+	buf.WriteByte(',')
+
+	buf.WriteString(valid)
+	buf.WriteByte(',')
 
 	// Convert latitude to NMEA format: DDMM.MMMMMM,N/S
 	latHemi := "N"
@@ -273,7 +352,7 @@ func buildGPRMC(lat, lon float64, ts time.Time, valid, faa string) string {
 	}
 	latDeg := int(lat)
 	latMin := (lat - float64(latDeg)) * 60.0
-	nmeaLat := fmt.Sprintf("%02d%09.6f,%s", latDeg, latMin, latHemi)
+	fmt.Fprintf(buf, "%02d%09.6f,%s,", latDeg, latMin, latHemi)
 
 	// Convert longitude to NMEA format: DDDMM.MMMMMM,E/W
 	lonHemi := "E"
@@ -283,17 +362,20 @@ func buildGPRMC(lat, lon float64, ts time.Time, valid, faa string) string {
 	}
 	lonDeg := int(lon)
 	lonMin := (lon - float64(lonDeg)) * 60.0
-	nmeaLon := fmt.Sprintf("%03d%09.6f,%s", lonDeg, lonMin, lonHemi)
+	fmt.Fprintf(buf, "%03d%09.6f,%s,,,", lonDeg, lonMin, lonHemi)
 
-	// Build sentence without checksum
-	body := fmt.Sprintf("GPRMC,%s,%s,%s,%s,,,%s,,,%s",
-		nmeaTime, valid, nmeaLat, nmeaLon, nmeaDate, faa)
+	// Date
+	buf.WriteString(ts.Format("020106"))
+	buf.WriteString(",,,")
+	buf.WriteString(faa)
 
-	// Calculate XOR checksum
+	// Calculate XOR checksum on the body (everything after '$')
+	bodyBytes := buf.Bytes()[bodyStart:]
 	checksum := byte(0)
-	for i := 0; i < len(body); i++ {
-		checksum ^= body[i]
+	for i := 0; i < len(bodyBytes); i++ {
+		checksum ^= bodyBytes[i]
 	}
 
-	return fmt.Sprintf("$%s*%02X", body, checksum)
+	// Write checksum
+	fmt.Fprintf(buf, "*%02X\r\n", checksum)
 }
