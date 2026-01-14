@@ -2,14 +2,6 @@
 
 A payload for the Hak5 WiFi Pineapple Pager that lets you use your mobile phone as the Pager's GPS.
 
-## Installation
-
-1. Download the payload (using `git clone` or [ZIP](https://github.com/ryanpohlner/mobile2gps/archive/refs/heads/main.zip))
-2. [Build](#building) or [download](https://github.com/ryanpohlner/mobile2gps/releases/) the `mobile2gps` server binary and place it in the payload folder
-3. Copy everything to `/mmc/root/payloads/user/general/mobile2gps` on your Pager
-
-
-
 ## How It Works
 
 mobile2gps creates a bridge between your mobile phone's location data and the Pager's GPS system:
@@ -20,6 +12,12 @@ mobile2gps creates a bridge between your mobile phone's location data and the Pa
 4. **Connectivity**: Your mobile phone connects to the Pager's Management AP, allowing it to access the web server at `https://172.16.52.1:1993`
 5. **Data Conversion**: Your mobile browser sends GPS coordinates to the web server, which converts them to NMEA GPRMC sentences
 6. **GPS Feed**: The NMEA sentences are written to the fake GPS device, which gpsd reads and makes available to the Pager's GPS system
+
+## Installation
+
+1. Download the payload (using `git clone`, the [ZIP](https://github.com/ryanpohlner/mobile2gps/archive/refs/heads/main.zip), or a payload downloader on the Pager)
+2. [Build](#building) or [download](https://github.com/ryanpohlner/mobile2gps/releases/) the `mobile2gps` server binary and place it in the payload folder
+3. Copy  `payload.sh`, `mobile2gps` (the binary), and `index.html` to `/mmc/root/payloads/user/general/mobile2gps` on your Pager
 
 ## <a name="building"></a>Building
 

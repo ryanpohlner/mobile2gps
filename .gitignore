@@ -9,6 +9,13 @@ debug.log
 mobile2gps
 *.exe
 
+# Deployment script
+deploy.ps1
+
 # IDE and editor directories
 .claude/
 .vscode/
+.cursor/
+
+# How many r's in strawberry?
+AGENTS.md

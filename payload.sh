@@ -2,14 +2,39 @@
 # Title: mobile2gps
 # Description: Use your mobile phone as the Pager's GPS.
 # Author: Ryan Pohlner (@Spectracide on Discord)
-# Version: 1.4
+# Version: 1.5
 # Category: General
 
 # Check if the mobile2gps binary exists
 if [ ! -f ./mobile2gps ]; then
   LOG red "ERROR: mobile2gps binary not found!"
   LOG yellow "Please see the README for build instructions."
-  exit
+  LOG ""
+  LOG yellow "Would you like to download the latest binary from GitHub?"
+  LOG ""
+  LOG red "You should exit, review the source code, and build it yourself."
+  LOG ""
+  LOG cyan "Press [▲] to DOWNLOAD"
+  LOG red "Press [▼] to EXIT"
+  LOG ""
+  
+  choice=$(WAIT_FOR_INPUT)
+  
+  if [ "$choice" = "UP" ]; then
+    LOG yellow "Downloading latest binary from GitHub..."
+    
+    if wget -q -O mobile2gps https://github.com/ryanpohlner/mobile2gps/releases/latest/download/mobile2gps 2>/dev/null; then
+      LOG green "Download complete!"
+    else
+      LOG red "Download failed."
+      LOG yellow "Please check the Pager's internet connection or download manually from:"
+      LOG cyan "https://github.com/ryanpohlner/mobile2gps/releases"
+      exit
+    fi
+  else
+    LOG "Exiting."
+    exit
+  fi
 fi
 
 # Make sure the binary is executable
@@ -66,7 +91,7 @@ while true; do
       LOG green "mobile2gps is running."
       coords=$(gpspipe --json -x 3 | tail -n 1 | jq -r '"\(.lat), \(.lon)"')
       if echo "$coords" | grep -q "null"; then
-        LOG red "Unable to obtain coordinates from gpspipe. Client is not connected or position is not accurate."
+        LOG red "Unable to obtain coordinates from gpspipe.\nClient is not connected or position is not accurate."
       else
         LOG green "Your coordinates are:\n$coords"
       fi
