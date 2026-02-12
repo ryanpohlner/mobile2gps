@@ -72,8 +72,8 @@ func main() {
 	// Kill any existing gpsd to free the port
 	exec.Command("killall", "gpsd").Run()
 
-	// Start gpsd
-	gpsd := exec.Command("gpsd", "-N", "-G",
+	// Start gpsd (use full path for restricted PATH environments like DuckyScript payloads)
+	gpsd := exec.Command("/usr/sbin/gpsd", "-N", "-G",
 		"-S", strconv.Itoa(gpsdPort),
 		slaveName)
 	gpsd.Stdout = os.Stdout
@@ -81,6 +81,7 @@ func main() {
 
 	if err := gpsd.Start(); err != nil {
 		log.Fatal("Failed to start gpsd:", err)
+		return
 	}
 	log.Println("Started gpsd on port", gpsdPort)
 

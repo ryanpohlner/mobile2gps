@@ -2,7 +2,7 @@
 # Title: mobile2gps
 # Description: Use your mobile phone as the Pager's GPS.
 # Author: Ryan Pohlner (@Spectracide on Discord)
-# Version: 1.5
+# Version: 1.6
 # Category: General
 
 # Check if the mobile2gps binary exists
